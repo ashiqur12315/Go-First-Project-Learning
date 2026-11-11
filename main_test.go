@@ -16,7 +16,7 @@ func setupTestServer() http.Handler {
 	mux.Handle("PUT /products/{id}", http.HandlerFunc(updateProduct))
 	mux.Handle("PATCH /products/{id}", http.HandlerFunc(patchProduct))
 	mux.Handle("DELETE /products/{id}", http.HandlerFunc(deleteProduct))
-	return mux
+	return corsMiddleware(mux)
 }
 
 func TestGetAllProducts(t *testing.T) {
@@ -149,5 +149,59 @@ func TestDeleteProduct(t *testing.T) {
 
 	if rr2.Code != http.StatusNotFound {
 		t.Fatalf("expected status 404, got %d", rr2.Code)
+	}
+}
+
+func TestCORSPreflightOptions(t *testing.T) {
+	server := setupTestServer()
+	req := httptest.NewRequest("OPTIONS", "/products", nil)
+	rr := httptest.NewRecorder()
+
+	server.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for OPTIONS preflight, got %d", rr.Code)
+	}
+
+	if origin := rr.Header().Get("Access-Control-Allow-Origin"); origin != "*" {
+		t.Fatalf("expected Access-Control-Allow-Origin '*', got %q", origin)
+	}
+
+	if methods := rr.Header().Get("Access-Control-Allow-Methods"); methods == "" {
+		t.Fatalf("expected Access-Control-Allow-Methods header to be set")
+	}
+
+	if headers := rr.Header().Get("Access-Control-Allow-Headers"); headers == "" {
+		t.Fatalf("expected Access-Control-Allow-Headers header to be set")
+	}
+}
+
+func TestCORSHeadersOnGet(t *testing.T) {
+	server := setupTestServer()
+	req := httptest.NewRequest("GET", "/products", nil)
+	rr := httptest.NewRecorder()
+
+	server.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	if origin := rr.Header().Get("Access-Control-Allow-Origin"); origin != "*" {
+		t.Fatalf("expected Access-Control-Allow-Origin '*', got %q", origin)
+	}
+}
+
+func TestExampleDirectCORS(t *testing.T) {
+	req := httptest.NewRequest("GET", "/example-direct-cors", nil)
+	rr := httptest.NewRecorder()
+
+	exampleDirectCORS(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+	if origin := rr.Header().Get("Access-Control-Allow-Origin"); origin != "*" {
+		t.Fatalf("expected '*', got %q", origin)
 	}
 }

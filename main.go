@@ -236,6 +236,56 @@ func deleteProduct(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "Product not found"})
 }
 
+// Example 1: An endpoint where CORS logic is written DIRECTLY inside the handler (NO middleware).
+// Look how simple it is: it's just setting headers on 'w' and checking if it's an OPTIONS request!
+func exampleDirectCORS(w http.ResponseWriter, r *http.Request) {
+	// --- CORS logic starts here ---
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	// --- CORS logic ends here ---
+
+	// The actual endpoint work:
+	writeJSON(w, http.StatusOK, map[string]string{
+		"message": "This endpoint handles CORS directly inside itself without any middleware!",
+	})
+}
+
+// corsMiddleware adds CORS headers to responses.
+// Notice the step-by-step flow:
+// 1. We create the handler function logic.
+// 2. We convert that function into an http.Handler.
+// 3. We return that newly created http.Handler at the very end.
+func corsMiddleware(next http.Handler) http.Handler {
+	// Step 1: Write the handler function that intercepts every incoming request
+	middlewareHandler := func(w http.ResponseWriter, r *http.Request) {
+		// Set CORS headers
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		// Preflight check: if browser sends OPTIONS, finish immediately
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Continue the chain: call the next handler (the router / ServeMux)
+		next.ServeHTTP(w, r)
+	}
+
+	// Step 2: Convert our function into an http.Handler using the http.HandlerFunc adapter
+	wrappedHandler := http.HandlerFunc(middlewareHandler)
+
+	// Step 3: Return the final wrapped handler at the end of the function!
+	return wrappedHandler
+}
+
 func main() {
 	mux := http.NewServeMux()
 
@@ -252,8 +302,22 @@ func main() {
 	mux.Handle("PATCH /products/{id}", http.HandlerFunc(patchProduct))
 	mux.Handle("DELETE /products/{id}", http.HandlerFunc(deleteProduct))
 
+	// Demonstration Endpoint 1: CORS written directly inside the endpoint handler (no middleware)
+	mux.Handle("/example-direct-cors", http.HandlerFunc(exampleDirectCORS))
+
+	// Demonstration Endpoint 2: Applying the middleware to a SINGLE endpoint on ONE line
+	mux.Handle("GET /example-inline-cors", corsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{
+			"message": "This endpoint was wrapped with corsMiddleware directly in one line!",
+		})
+	})))
+
+	// Wrap our router (mux) with the CORS middleware
+	// Now EVERY incoming request goes through corsMiddleware first!
+	handlerWithCORS := corsMiddleware(mux)
+
 	fmt.Println("Server is running on http://localhost:8080")
-	if err := http.ListenAndServe(":8080", mux); err != nil {
+	if err := http.ListenAndServe(":8080", handlerWithCORS); err != nil {
 		fmt.Println("Error starting server:", err)
 	}
 }
