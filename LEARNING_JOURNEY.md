@@ -17,10 +17,19 @@
 
 ## 🏗️ Current Architecture & Files
 
-| File | Purpose |
+| File / Package | Purpose |
 | :--- | :--- |
-| `main.go` | Main application containing the HTTP server, models, in-memory store, REST handlers, CORS middleware, and route registrations. |
-| `main_test.go` | Unit and integration test suite using Go's `net/http/httptest` package covering all endpoints and CORS behavior. |
+| `main.go` | Ultra-clean entry point (`package main`): 5 lines of code that simply calls `cmd.Serve()`. |
+| `cmd/serve.go` | `package cmd`: Configures the `ServeMux`, registers routes from `handlers`, wraps with `middleware.CorsMiddleware`, and runs `http.ListenAndServe`. |
+| `models/product.go` | `package models`: Exported data models (`Product`, `UpdateProductInput`) and thread-safe in-memory store (`Products`, `Mu`, `NextID`). |
+| `handlers/helpers.go` | `package handlers`: Package-private helper `writeJSON` (lowercase 'w') used by handlers. |
+| `handlers/get_product.go` | `package handlers`: Exported query handlers `GetAllProducts` and `GetProductByID`. |
+| `handlers/create_product.go` | `package handlers`: Exported handler `CreateProduct`. |
+| `handlers/update_product.go` | `package handlers`: Exported handlers `UpdateProduct` and `PatchProduct`. |
+| `handlers/delete_product.go` | `package handlers`: Exported handler `DeleteProduct`. |
+| `middleware/cors.go` | `package middleware`: Exported `CorsMiddleware` with preflight `OPTIONS` and caching. |
+| `middleware/logger.go` | `package middleware`: Exported `LoggerMiddleware` with `responseRecorder` capturing method, path, status, and latency. |
+| `main_test.go` | Integration and unit tests covering all handlers and middleware. |
 | `go.mod` | Go module definition (`module go-first-project`). |
 | `LEARNING_JOURNEY.md` | Persistent learning log and context tracker for the developer and AI agents. |
 
@@ -82,10 +91,42 @@
   1. **Directly inside a single handler**: Setting headers on `w` (see `exampleDirectCORS`).
   2. **Per-route inline**: `mux.Handle("/url", corsMiddleware(handler))`.
   3. **Globally across all routes**: `http.ListenAndServe(":8080", corsMiddleware(mux))`.
+- **Why Wrapping `mux` Works (The Key Insight)**:
+  - In Go, `http.ServeMux` **implements `http.Handler`**!
+  - Therefore, `corsMiddleware(mux)` passes `mux` in as the `next` argument.
+  - When a request arrives, Go executes `corsMiddleware`, which executes `w.Header().Set(...)` and then calls `next.ServeHTTP(w, r)`.
+  - Since `next == mux`, it calls `mux.ServeHTTP(w, r)`! `mux` then matches the URL pattern (e.g. `GET /products`) and forwards `w` and `r` to `getAllProducts(w, r)`.
 
 ### 6. Automated Testing with `httptest`
 - Uses `net/http/httptest.NewRecorder()` and `httptest.NewRequest(...)` to test HTTP handlers in isolation without spinning up a live network socket.
 - Run tests anytime with `go test -v .`.
+
+### 7. Go Packages & Visibility Rules (Exported vs. Unexported)
+- **Directory = Package**: In Go, each directory represents a package (e.g., `models/` is `package models`, `handlers/` is `package handlers`).
+- **Capitalization Rule**:
+  - **Uppercase (PascalCase)**: **Exported** (public, accessible by other packages). E.g., `handlers.GetAllProducts`, `models.Product`, `middleware.CorsMiddleware`.
+  - **Lowercase (camelCase)**: **Unexported** (package-private). E.g., `handlers.writeJSON` is only usable by files inside the `handlers` folder.
+- **Importing Local Packages**:
+  - Imported using module name prefix from `go.mod`:
+    ```go
+    import (
+        "go-first-project/handlers"
+        "go-first-project/middleware"
+        "go-first-project/models"
+    )
+    ```
+
+### 8. Logger Middleware & Middleware Chaining
+- **Response Recorder Wrapper**: In Go, `http.ResponseWriter` doesn't expose the status code after writing it. We create a `responseRecorder` struct embedding `http.ResponseWriter` that intercepts `WriteHeader(code)` to record `statusCode`.
+- **Latency Measurement**: Captures `start := time.Now()` before calling `next.ServeHTTP(rec, r)` and `duration := time.Since(start)` after it finishes.
+- **Middleware Chaining**: Middlewares wrap each other like onion layers:
+  ```go
+  rootHandler := middleware.LoggerMiddleware(middleware.CorsMiddleware(mux))
+  ```
+  Request pipeline:
+  $$\text{Request} \longrightarrow \mathbf{Logger} \longrightarrow \mathbf{CORS} \longrightarrow \mathbf{ServeMux} \longrightarrow \mathbf{Handler}$$
+  Response pipeline:
+  $$\text{Response} \longleftarrow \mathbf{Logger\ (logs\ latency\ \&\ status)} \longleftarrow \mathbf{CORS} \longleftarrow \mathbf{Handler}$$
 
 ---
 
@@ -100,8 +141,6 @@
 | `PUT` | `/products/{id}` | Replaces all fields of an existing product |
 | `PATCH` | `/products/{id}` | Updates only provided fields (price, stock, etc.) |
 | `DELETE` | `/products/{id}` | Deletes product by ID |
-| `GET` | `/example-direct-cors` | Demonstrates CORS written directly inside handler |
-| `GET` | `/example-inline-cors` | Demonstrates wrapping a single route with middleware |
 
 ---
 
@@ -172,3 +211,33 @@ When you're ready to proceed in your video tutorial or with any AI assistant, re
   - Refactored `corsMiddleware` with explicit step-by-step variables and clear final `return`.
   - Added demonstration endpoints for direct in-handler CORS vs. inline route-wrapped CORS.
   - Created `LEARNING_JOURNEY.md` to track progress and share state across AI agents.
+- **Session 2**:
+  - Deep-dive into Global Middleware mechanics and Go's `http.Handler` abstraction.
+  - Demystified `mux` as an `http.Handler`: discovered that `http.ServeMux` implements `ServeHTTP(w, r)`.
+  - Traced the complete line-by-line runtime lifecycle of a request (`GET /products`) through `corsMiddleware` into `mux` and finally `getAllProducts`.
+- **Session 3**:
+  - Verified and explored the `OPTIONS` preflight request lifecycle in `corsMiddleware`.
+  - Confirmed why `next.ServeHTTP(w, r)` is intentionally skipped for `OPTIONS` (answering the browser preflight security gate immediately).
+  - Added `Access-Control-Max-Age: 86400` to cache preflight permission for 24 hours, saving unnecessary extra network roundtrips.
+- **Session 4**:
+  - Cleaned up demonstration endpoints (`/example-direct-cors` and `/example-inline-cors`) from `main.go` and `main_test.go`.
+  - Verified that all core product REST endpoints and CORS preflight tests continue to pass with 100% success.
+- **Session 5**:
+  - Renamed `handlerWithCORS` to the idiomatic `rootHandler` in `main.go`.
+  - Discussed standard Go naming conventions for root HTTP handlers.
+- **Session 6**:
+  - Destructured and modularized the monolithic `main.go` into dedicated files: `models.go`, `helpers.go`, `middleware.go`, `get_product.go`, `create_product.go`, `update_product.go`, `delete_product.go`, and a clean, concise `main.go`.
+  - Highlighted the critical Go CLI tip: use `go run .` instead of `go run main.go` when working with multiple files in `package main`.
+- **Session 7**:
+  - Migrated from a single flat package to multi-package architecture: `models/`, `handlers/`, and `middleware/`.
+  - Learned Go's visibility rules (Uppercase = Exported/Public, Lowercase = Unexported/Package-private).
+  - Learned how to import subpackages using the module prefix (`"go-first-project/..."`).
+  - Updated all unit tests in `main_test.go` to test across the new packages.
+- **Session 8**:
+  - Introduced the standard `cmd/` package pattern with `cmd/serve.go`.
+  - Moved server initialization and routing logic into `cmd.Serve()`.
+  - Reduced `main.go` to an ultra-clean 5-line entry point that delegates execution to `cmd.Serve()`.
+- **Session 9**:
+  - Implemented `middleware/logger.go` with a custom `responseRecorder` to capture HTTP status codes and measure request latency.
+  - Chained multiple middlewares (`LoggerMiddleware` wrapping `CorsMiddleware` wrapping `mux`).
+  - Verified terminal logging output across all unit tests and endpoints.

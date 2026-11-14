@@ -6,17 +6,21 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"go-first-project/handlers"
+	"go-first-project/middleware"
+	"go-first-project/models"
 )
 
 func setupTestServer() http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("GET /products", http.HandlerFunc(getAllProducts))
-	mux.Handle("GET /products/{id}", http.HandlerFunc(getProductByID))
-	mux.Handle("POST /products", http.HandlerFunc(createProduct))
-	mux.Handle("PUT /products/{id}", http.HandlerFunc(updateProduct))
-	mux.Handle("PATCH /products/{id}", http.HandlerFunc(patchProduct))
-	mux.Handle("DELETE /products/{id}", http.HandlerFunc(deleteProduct))
-	return corsMiddleware(mux)
+	mux.Handle("GET /products", http.HandlerFunc(handlers.GetAllProducts))
+	mux.Handle("GET /products/{id}", http.HandlerFunc(handlers.GetProductByID))
+	mux.Handle("POST /products", http.HandlerFunc(handlers.CreateProduct))
+	mux.Handle("PUT /products/{id}", http.HandlerFunc(handlers.UpdateProduct))
+	mux.Handle("PATCH /products/{id}", http.HandlerFunc(handlers.PatchProduct))
+	mux.Handle("DELETE /products/{id}", http.HandlerFunc(handlers.DeleteProduct))
+	return middleware.LoggerMiddleware(middleware.CorsMiddleware(mux))
 }
 
 func TestGetAllProducts(t *testing.T) {
@@ -30,7 +34,7 @@ func TestGetAllProducts(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", rr.Code)
 	}
 
-	var prods []Product
+	var prods []models.Product
 	if err := json.Unmarshal(rr.Body.Bytes(), &prods); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
@@ -51,7 +55,7 @@ func TestGetProductByID(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", rr.Code)
 	}
 
-	var prod Product
+	var prod models.Product
 	if err := json.Unmarshal(rr.Body.Bytes(), &prod); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
@@ -74,7 +78,7 @@ func TestCreateProduct(t *testing.T) {
 		t.Fatalf("expected status 201, got %d", rr.Code)
 	}
 
-	var prod Product
+	var prod models.Product
 	if err := json.Unmarshal(rr.Body.Bytes(), &prod); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
@@ -97,7 +101,7 @@ func TestUpdateProduct(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", rr.Code)
 	}
 
-	var prod Product
+	var prod models.Product
 	if err := json.Unmarshal(rr.Body.Bytes(), &prod); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
@@ -121,7 +125,7 @@ func TestPatchProduct(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", rr.Code)
 	}
 
-	var prod Product
+	var prod models.Product
 	if err := json.Unmarshal(rr.Body.Bytes(), &prod); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
@@ -189,19 +193,5 @@ func TestCORSHeadersOnGet(t *testing.T) {
 
 	if origin := rr.Header().Get("Access-Control-Allow-Origin"); origin != "*" {
 		t.Fatalf("expected Access-Control-Allow-Origin '*', got %q", origin)
-	}
-}
-
-func TestExampleDirectCORS(t *testing.T) {
-	req := httptest.NewRequest("GET", "/example-direct-cors", nil)
-	rr := httptest.NewRecorder()
-
-	exampleDirectCORS(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rr.Code)
-	}
-	if origin := rr.Header().Get("Access-Control-Allow-Origin"); origin != "*" {
-		t.Fatalf("expected '*', got %q", origin)
 	}
 }
