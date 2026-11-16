@@ -48,7 +48,7 @@
 - **`http.HandlerFunc` Adapter**: Converts ordinary functions `func(w http.ResponseWriter, r *http.Request)` into an `http.Handler`.
 - All routes are registered using:
   ```go
-  mux.Handle("GET /products", http.HandlerFunc(getAllProducts))
+  mux.Handle("GET /products", http.HandlerFunc(handlers.GetAllProducts))
   ```
 
 ### 3. REST API Methods
@@ -69,11 +69,12 @@
 - **Preflight Check (`OPTIONS`)**: Browsers send an automatic `OPTIONS` request before complex calls (`POST`, `PUT`, `PATCH` with JSON headers). Handled by returning `200 OK` immediately.
 - **Middleware Pattern**: A function taking `http.Handler` and returning `http.Handler`:
   ```go
-  func corsMiddleware(next http.Handler) http.Handler {
+  func CorsMiddleware(next http.Handler) http.Handler {
       middlewareHandler := func(w http.ResponseWriter, r *http.Request) {
           w.Header().Set("Access-Control-Allow-Origin", "*")
           w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
           w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+          w.Header().Set("Access-Control-Max-Age", "86400")
 
           if r.Method == http.MethodOptions {
               w.WriteHeader(http.StatusOK)
@@ -88,18 +89,21 @@
   }
   ```
 - **Three Ways to Apply CORS**:
-  1. **Directly inside a single handler**: Setting headers on `w` (see `exampleDirectCORS`).
-  2. **Per-route inline**: `mux.Handle("/url", corsMiddleware(handler))`.
-  3. **Globally across all routes**: `http.ListenAndServe(":8080", corsMiddleware(mux))`.
+  1. **Directly inside a single handler**: Setting headers directly on `w`.
+  2. **Per-route inline**: `mux.Handle("/url", CorsMiddleware(handler))`.
+  3. **Globally across all routes**: `rootHandler := CorsMiddleware(mux)`.
 - **Why Wrapping `mux` Works (The Key Insight)**:
   - In Go, `http.ServeMux` **implements `http.Handler`**!
-  - Therefore, `corsMiddleware(mux)` passes `mux` in as the `next` argument.
-  - When a request arrives, Go executes `corsMiddleware`, which executes `w.Header().Set(...)` and then calls `next.ServeHTTP(w, r)`.
-  - Since `next == mux`, it calls `mux.ServeHTTP(w, r)`! `mux` then matches the URL pattern (e.g. `GET /products`) and forwards `w` and `r` to `getAllProducts(w, r)`.
+  - Therefore, `CorsMiddleware(mux)` passes `mux` in as the `next` argument.
+  - When a request arrives, Go executes `CorsMiddleware`, which sets headers and calls `next.ServeHTTP(w, r)`.
+  - Since `next == mux`, it calls `mux.ServeHTTP(w, r)`! `mux` matches the route (e.g. `GET /products`) and forwards `w` and `r` to `handlers.GetAllProducts(w, r)`.
 
 ### 6. Automated Testing with `httptest`
 - Uses `net/http/httptest.NewRecorder()` and `httptest.NewRequest(...)` to test HTTP handlers in isolation without spinning up a live network socket.
-- Run tests anytime with `go test -v .`.
+- Run tests across all packages anytime with:
+  ```powershell
+  go test -v ./...
+  ```
 
 ### 7. Go Packages & Visibility Rules (Exported vs. Unexported)
 - **Directory = Package**: In Go, each directory represents a package (e.g., `models/` is `package models`, `handlers/` is `package handlers`).
@@ -186,17 +190,17 @@
 When you're ready to proceed in your video tutorial or with any AI assistant, recommended next topics are:
 
 1. **Persistent Database Integration**:
-   - Replace in-memory slice with SQLite or PostgreSQL using Go's standard `database/sql` driver.
-2. **Project Structure Refactoring**:
-   - Separate code into standard Go packages (`cmd/server/main.go`, `internal/handlers`, `internal/models`, `internal/middleware`).
+   - Replace in-memory slice with SQLite or PostgreSQL using Go's standard `database/sql` driver (or GORM / sqlc / pgx).
+2. **Environment Variables & Config**:
+   - Reading server PORT, DB credentials, and debug modes from `.env` or system environment (`os.Getenv`).
 3. **Structured Request Validation**:
-   - Input sanitization, checking string lengths, required fields, and returning consistent error JSON.
-4. **Environment Variables**:
-   - Reading PORT and configuration from `.env` or system environment (`os.Getenv`).
-5. **Authentication & Authorization**:
-   - Writing an Auth Middleware to check JWT bearer tokens or API keys.
-6. **Logging Middleware**:
-   - Creating a middleware that logs request method, path, status code, and latency (e.g. using `log/slog`).
+   - Validating incoming payloads (e.g., checking minimum name length, positive price, valid email/data formats) and returning standardized error JSON structures.
+4. **Authentication & Authorization**:
+   - Writing an Auth Middleware to inspect `Authorization: Bearer <token>` headers using JWT.
+5. **Graceful Shutdown**:
+   - Listening for OS interrupt signals (`os.Interrupt`, `syscall.SIGTERM`) to cleanly close server listeners and database connections using `server.Shutdown(ctx)`.
+6. **Dockerizing the Application**:
+   - Writing a multi-stage `Dockerfile` to create a tiny, production-ready Go binary container.
 
 ---
 
