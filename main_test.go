@@ -20,7 +20,14 @@ func setupTestServer() http.Handler {
 	mux.Handle("PUT /products/{id}", http.HandlerFunc(handlers.UpdateProduct))
 	mux.Handle("PATCH /products/{id}", http.HandlerFunc(handlers.PatchProduct))
 	mux.Handle("DELETE /products/{id}", http.HandlerFunc(handlers.DeleteProduct))
-	return middleware.LoggerMiddleware(middleware.CorsMiddleware(mux))
+
+	manager := middleware.NewManager()
+	manager.Use(
+		middleware.LoggerMiddleware,
+		middleware.CorsMiddleware,
+	)
+
+	return manager.Wrap(mux)
 }
 
 func TestGetAllProducts(t *testing.T) {
@@ -193,5 +200,49 @@ func TestCORSHeadersOnGet(t *testing.T) {
 
 	if origin := rr.Header().Get("Access-Control-Allow-Origin"); origin != "*" {
 		t.Fatalf("expected Access-Control-Allow-Origin '*', got %q", origin)
+	}
+}
+
+func TestMiddlewareManagerExecutionOrder(t *testing.T) {
+	var executionOrder []string
+
+	m1 := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			executionOrder = append(executionOrder, "m1_start")
+			next.ServeHTTP(w, r)
+			executionOrder = append(executionOrder, "m1_end")
+		})
+	}
+
+	m2 := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			executionOrder = append(executionOrder, "m2_start")
+			next.ServeHTTP(w, r)
+			executionOrder = append(executionOrder, "m2_end")
+		})
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		executionOrder = append(executionOrder, "handler")
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mgr := middleware.NewManager()
+	mgr.Use(m1, m2)
+	wrapped := mgr.Wrap(handler)
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	rr := httptest.NewRecorder()
+	wrapped.ServeHTTP(rr, req)
+
+	expectedOrder := []string{"m1_start", "m2_start", "handler", "m2_end", "m1_end"}
+	if len(executionOrder) != len(expectedOrder) {
+		t.Fatalf("expected %d events, got %d: %v", len(expectedOrder), len(executionOrder), executionOrder)
+	}
+
+	for i, v := range expectedOrder {
+		if executionOrder[i] != v {
+			t.Errorf("at index %d: expected %s, got %s", i, v, executionOrder[i])
+		}
 	}
 }

@@ -26,9 +26,15 @@ func Serve() {
 	mux.Handle("PATCH /products/{id}", http.HandlerFunc(handlers.PatchProduct))
 	mux.Handle("DELETE /products/{id}", http.HandlerFunc(handlers.DeleteProduct))
 
-	// Chain middlewares:
-	// Flow: Incoming Request -> LoggerMiddleware -> CorsMiddleware -> Mux -> Handlers
-	rootHandler := middleware.LoggerMiddleware(middleware.CorsMiddleware(mux))
+	// Use Middleware Manager to chain middlewares cleanly without deep nesting.
+	// Execution flow: Incoming Request -> LoggerMiddleware -> CorsMiddleware -> Mux -> Handlers
+	manager := middleware.NewManager()
+	manager.Use(
+		middleware.LoggerMiddleware,
+		middleware.CorsMiddleware,
+	)
+
+	rootHandler := manager.Wrap(mux)
 
 	fmt.Println("Server is running on http://localhost:8080")
 	if err := http.ListenAndServe(":8080", rootHandler); err != nil {

@@ -20,7 +20,7 @@
 | File / Package | Purpose |
 | :--- | :--- |
 | `main.go` | Ultra-clean entry point (`package main`): 5 lines of code that simply calls `cmd.Serve()`. |
-| `cmd/serve.go` | `package cmd`: Configures the `ServeMux`, registers routes from `handlers`, wraps with `middleware.CorsMiddleware`, and runs `http.ListenAndServe`. |
+| `cmd/serve.go` | `package cmd`: Configures the `ServeMux`, registers routes from `handlers`, attaches middlewares via `middleware.Manager`, and runs `http.ListenAndServe`. |
 | `models/product.go` | `package models`: Exported data models (`Product`, `UpdateProductInput`) and thread-safe in-memory store (`Products`, `Mu`, `NextID`). |
 | `handlers/helpers.go` | `package handlers`: Package-private helper `writeJSON` (lowercase 'w') used by handlers. |
 | `handlers/get_product.go` | `package handlers`: Exported query handlers `GetAllProducts` and `GetProductByID`. |
@@ -29,6 +29,7 @@
 | `handlers/delete_product.go` | `package handlers`: Exported handler `DeleteProduct`. |
 | `middleware/cors.go` | `package middleware`: Exported `CorsMiddleware` with preflight `OPTIONS` and caching. |
 | `middleware/logger.go` | `package middleware`: Exported `LoggerMiddleware` with `responseRecorder` capturing method, path, status, and latency. |
+| `middleware/manager.go` | `package middleware`: Exported `Manager` and `Middleware` type to chain middlewares cleanly without nesting. |
 | `main_test.go` | Integration and unit tests covering all handlers and middleware. |
 | `go.mod` | Go module definition (`module go-first-project`). |
 | `LEARNING_JOURNEY.md` | Persistent learning log and context tracker for the developer and AI agents. |
@@ -131,6 +132,36 @@
   $$\text{Request} \longrightarrow \mathbf{Logger} \longrightarrow \mathbf{CORS} \longrightarrow \mathbf{ServeMux} \longrightarrow \mathbf{Handler}$$
   Response pipeline:
   $$\text{Response} \longleftarrow \mathbf{Logger\ (logs\ latency\ \&\ status)} \longleftarrow \mathbf{CORS} \longleftarrow \mathbf{Handler}$$
+
+### 9. Middleware Manager & Clean Chaining (Solving the Onion Pyramid)
+- **The Problem**: Wrapping multiple middlewares creates deeply nested code:
+  ```go
+  rootHandler := middleware.Logger(middleware.Cors(middleware.Auth(middleware.RateLimit(mux))))
+  ```
+- **The Type Definition**: Every standard Go middleware matches `func(http.Handler) http.Handler`, so we define:
+  ```go
+  type Middleware func(http.Handler) http.Handler
+  ```
+- **The Manager Pattern**: A `Manager` struct holds a slice `[]Middleware`.
+- **The Reverse Loop in `Wrap()`**:
+  ```go
+  func (m *Manager) Wrap(handler http.Handler) http.Handler {
+      for i := len(m.middlewares) - 1; i >= 0; i-- {
+          handler = m.middlewares[i](handler)
+      }
+      return handler
+  }
+  ```
+  By iterating backwards, the first middleware passed to `manager.Use(m1, m2)` becomes the outermost wrapper, meaning incoming requests hit `m1` first, then `m2`, then the router.
+- **Clean Configuration**:
+  ```go
+  manager := middleware.NewManager()
+  manager.Use(
+      middleware.LoggerMiddleware,
+      middleware.CorsMiddleware,
+  )
+  rootHandler := manager.Wrap(mux)
+  ```
 
 ---
 
@@ -245,3 +276,10 @@ When you're ready to proceed in your video tutorial or with any AI assistant, re
   - Implemented `middleware/logger.go` with a custom `responseRecorder` to capture HTTP status codes and measure request latency.
   - Chained multiple middlewares (`LoggerMiddleware` wrapping `CorsMiddleware` wrapping `mux`).
   - Verified terminal logging output across all unit tests and endpoints.
+- **Session 10**:
+  - Solved the nested middleware "pyramid of doom" by implementing a Middleware Manager pattern in `middleware/manager.go`.
+  - Defined `type Middleware func(http.Handler) http.Handler`.
+  - Implemented `Manager` struct with `Use(middlewares...)` and `Wrap(handler)`.
+  - Learned why iterating backwards through the middleware slice ensures the first registered middleware executes first for incoming requests.
+  - Refactored `cmd/serve.go` and `main_test.go` to use `manager.Wrap(mux)`.
+  - Added dedicated unit test `TestMiddlewareManagerExecutionOrder` verifying exact start/end lifecycle order.
