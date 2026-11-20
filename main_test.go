@@ -7,25 +7,20 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"go-first-project/handlers"
+	"go-first-project/cmd"
 	"go-first-project/middleware"
 	"go-first-project/models"
 )
 
 func setupTestServer() http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("GET /products", http.HandlerFunc(handlers.GetAllProducts))
-	mux.Handle("GET /products/{id}", http.HandlerFunc(handlers.GetProductByID))
-	mux.Handle("POST /products", http.HandlerFunc(handlers.CreateProduct))
-	mux.Handle("PUT /products/{id}", http.HandlerFunc(handlers.UpdateProduct))
-	mux.Handle("PATCH /products/{id}", http.HandlerFunc(handlers.PatchProduct))
-	mux.Handle("DELETE /products/{id}", http.HandlerFunc(handlers.DeleteProduct))
-
 	manager := middleware.NewManager()
 	manager.Use(
 		middleware.LoggerMiddleware,
 		middleware.CorsMiddleware,
 	)
+
+	cmd.RegisterRoutes(mux, manager)
 
 	return manager.Wrap(mux)
 }

@@ -20,7 +20,8 @@
 | File / Package | Purpose |
 | :--- | :--- |
 | `main.go` | Ultra-clean entry point (`package main`): 5 lines of code that simply calls `cmd.Serve()`. |
-| `cmd/serve.go` | `package cmd`: Configures the `ServeMux`, registers routes from `handlers`, attaches middlewares via `middleware.Manager`, and runs `http.ListenAndServe`. |
+| `cmd/serve.go` | `package cmd`: Orchestrates server startup: initializes `mux` and `manager`, calls `RegisterRoutes(mux, manager)`, wraps with `manager.Wrap(mux)`, and runs `http.ListenAndServe`. |
+| `cmd/routes.go` | `package cmd`: Single source of truth for routing — defines `RegisterRoutes(mux, manager)` and maps URL paths/methods to handler functions. |
 | `models/product.go` | `package models`: Exported data models (`Product`, `UpdateProductInput`) and thread-safe in-memory store (`Products`, `Mu`, `NextID`). |
 | `handlers/helpers.go` | `package handlers`: Package-private helper `writeJSON` (lowercase 'w') used by handlers. |
 | `handlers/get_product.go` | `package handlers`: Exported query handlers `GetAllProducts` and `GetProductByID`. |
@@ -163,6 +164,18 @@
   rootHandler := manager.Wrap(mux)
   ```
 
+### 10. Dedicated Route Registry (`cmd/routes.go`)
+- **Separation of Concerns**: `cmd/serve.go` manages server lifecycle, port listening, and global middleware configuration. `cmd/routes.go` is the single source of truth for URL path declarations and handler mappings.
+- **Passing Mux and Manager as Input**:
+  ```go
+  func RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager) {
+      mux.Handle("GET /products", http.HandlerFunc(handlers.GetAllProducts))
+      // ...
+  }
+  ```
+  Passing both `mux` and `manager` gives route definitions full access to the router while also allowing route-specific middlewares to be applied via `manager` when needed.
+- **Single Source of Truth for Tests**: Integration tests in `main_test.go` call `cmd.RegisterRoutes(mux, manager)` directly, eliminating duplicated endpoint definitions.
+
 ---
 
 ## 📡 Registered Endpoints
@@ -283,3 +296,8 @@ When you're ready to proceed in your video tutorial or with any AI assistant, re
   - Learned why iterating backwards through the middleware slice ensures the first registered middleware executes first for incoming requests.
   - Refactored `cmd/serve.go` and `main_test.go` to use `manager.Wrap(mux)`.
   - Added dedicated unit test `TestMiddlewareManagerExecutionOrder` verifying exact start/end lifecycle order.
+- **Session 11**:
+  - Extracted all route declarations from `cmd/serve.go` into a dedicated `cmd/routes.go` file.
+  - Defined `RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager)` accepting both router and middleware manager as input.
+  - Refactored `cmd/serve.go` to instantiate `mux` and `manager`, configure global middlewares, and pass them to `RegisterRoutes(mux, manager)`.
+  - Refactored `main_test.go` to use `cmd.RegisterRoutes(mux, manager)`, keeping routes and tests DRY (Don't Repeat Yourself).
