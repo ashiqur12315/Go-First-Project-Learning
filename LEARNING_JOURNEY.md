@@ -20,18 +20,22 @@
 | File / Package | Purpose |
 | :--- | :--- |
 | `main.go` | Ultra-clean entry point (`package main`): 5 lines of code that simply calls `cmd.Serve()`. |
-| `cmd/serve.go` | `package cmd`: Orchestrates server startup: initializes `mux` and `manager`, calls `RegisterRoutes(mux, manager)`, wraps with `manager.Wrap(mux)`, and runs `http.ListenAndServe`. |
-| `cmd/routes.go` | `package cmd`: Single source of truth for routing — defines `RegisterRoutes(mux, manager)` and maps URL paths/methods to handler functions. |
+| `cmd/serve.go` | `package cmd`: Orchestrates application startup: loads `config.Load()`, prints startup banner, and passes `cfg` to `rest.Start(cfg)`. |
+| `config/config.go` | `package config`: Pure standard-library configuration manager — reads `.env` via `bufio.Scanner`, sets `os.Setenv`, and populates `Config` struct (`Version`, `ServiceName`, `Port`) with fallback defaults. |
+| `config/config_test.go` | `package config`: Unit test suite verifying `.env` parsing, comments, quotes, and fallback defaults. |
+| `.env` | Environment configuration file containing `VERSION`, `SERVICE_NAME`, and `PORT`. |
 | `models/product.go` | `package models`: Exported data models (`Product`, `UpdateProductInput`) and thread-safe in-memory store (`Products`, `Mu`, `NextID`). |
-| `handlers/helpers.go` | `package handlers`: Package-private helper `writeJSON` (lowercase 'w') used by handlers. |
-| `handlers/get_product.go` | `package handlers`: Exported query handlers `GetAllProducts` and `GetProductByID`. |
-| `handlers/create_product.go` | `package handlers`: Exported handler `CreateProduct`. |
-| `handlers/update_product.go` | `package handlers`: Exported handlers `UpdateProduct` and `PatchProduct`. |
-| `handlers/delete_product.go` | `package handlers`: Exported handler `DeleteProduct`. |
-| `middleware/cors.go` | `package middleware`: Exported `CorsMiddleware` with preflight `OPTIONS` and caching. |
-| `middleware/logger.go` | `package middleware`: Exported `LoggerMiddleware` with `responseRecorder` capturing method, path, status, and latency. |
-| `middleware/manager.go` | `package middleware`: Exported `Manager` and `Middleware` type to chain middlewares cleanly without nesting. |
-| `main_test.go` | Integration and unit tests covering all handlers and middleware. |
+| `rest/server.go` | `package rest`: Encapsulates REST server setup — accepts `cfg *config.Config`, initializes `mux` and `manager`, calls `RegisterRoutes(mux, manager)`, wraps with `manager.Wrap(mux)`, and starts `http.ListenAndServe`. |
+| `rest/routes.go` | `package rest`: Single source of truth for routing — defines `RegisterRoutes(mux, manager)` and maps URL paths/methods to handler functions. |
+| `rest/handlers/helpers.go` | `package handlers`: Package-private helper `writeJSON` (lowercase 'w') used by handlers. |
+| `rest/handlers/get_product.go` | `package handlers`: Exported query handlers `GetAllProducts` and `GetProductByID`. |
+| `rest/handlers/create_product.go` | `package handlers`: Exported handler `CreateProduct`. |
+| `rest/handlers/update_product.go` | `package handlers`: Exported handlers `UpdateProduct` and `PatchProduct`. |
+| `rest/handlers/delete_product.go` | `package handlers`: Exported handler `DeleteProduct`. |
+| `rest/middleware/cors.go` | `package middleware`: Exported `CorsMiddleware` with preflight `OPTIONS` and caching. |
+| `rest/middleware/logger.go` | `package middleware`: Exported `LoggerMiddleware` with `responseRecorder` capturing method, path, status, and latency. |
+| `rest/middleware/manager.go` | `package middleware`: Exported `Manager` and `Middleware` type to chain middlewares cleanly without nesting. |
+| `main_test.go` | Integration and unit tests covering all handlers and middleware via `rest.RegisterRoutes`. |
 | `go.mod` | Go module definition (`module go-first-project`). |
 | `LEARNING_JOURNEY.md` | Persistent learning log and context tracker for the developer and AI agents. |
 
@@ -176,6 +180,27 @@
   Passing both `mux` and `manager` gives route definitions full access to the router while also allowing route-specific middlewares to be applied via `manager` when needed.
 - **Single Source of Truth for Tests**: Integration tests in `main_test.go` call `cmd.RegisterRoutes(mux, manager)` directly, eliminating duplicated endpoint definitions.
 
+### 11. Pure Standard-Library Config & `.env` Parser (Zero 3rd-Party Dependencies)
+- **Why No External Packages?**: Go's `os`, `bufio`, and `strings` packages are sufficient to parse `.env` files and manage environment configuration without adding external dependencies (like `godotenv`).
+- **Parsing Mechanics (`bufio.Scanner`)**:
+  - `os.Open(".env")` opens the file safely; if missing, returns `nil` so production/container environments relying on system environment variables continue working.
+  - `scanner.Scan()` reads line-by-line, stripping whitespace and skipping blank lines and comments (`#`).
+  - `strings.SplitN(line, "=", 2)` cleanly separates keys and values, stripping optional enclosing quotes (`"` or `'`).
+  - `os.Setenv(key, value)` sets keys into the runtime environment only if not already provided by the host OS.
+- **Strongly Typed `Config` Struct**:
+  - `Config` exposes `Version`, `ServiceName`, and `Port`.
+  - Uses `getEnv(key, fallback)` helper to guarantee safe default values if `.env` keys are omitted.
+
+### 12. REST Layer Encapsulation (`rest/` package)
+- **Architectural Motivation**: Separates transport protocols (REST/HTTP) from business logic, CLI commands, and database models. This prepares the application to support other transports in the future (like gRPC or WebSocket) without modifying core domain logic.
+- **The `rest/server.go` Entry Point**:
+  ```go
+  func Start(cfg *config.Config) { ... }
+  ```
+  Encapsulates mux creation, middleware configuration, route binding, and HTTP listener binding.
+- **Passing Configuration Down**:
+  `cmd/serve.go` simply calls `rest.Start(cfg)`, keeping CLI/cmd code decoupled from HTTP server implementation details.
+
 ---
 
 ## 📡 Registered Endpoints
@@ -235,15 +260,13 @@ When you're ready to proceed in your video tutorial or with any AI assistant, re
 
 1. **Persistent Database Integration**:
    - Replace in-memory slice with SQLite or PostgreSQL using Go's standard `database/sql` driver (or GORM / sqlc / pgx).
-2. **Environment Variables & Config**:
-   - Reading server PORT, DB credentials, and debug modes from `.env` or system environment (`os.Getenv`).
-3. **Structured Request Validation**:
+2. **Structured Request Validation**:
    - Validating incoming payloads (e.g., checking minimum name length, positive price, valid email/data formats) and returning standardized error JSON structures.
-4. **Authentication & Authorization**:
+3. **Authentication & Authorization**:
    - Writing an Auth Middleware to inspect `Authorization: Bearer <token>` headers using JWT.
-5. **Graceful Shutdown**:
+4. **Graceful Shutdown**:
    - Listening for OS interrupt signals (`os.Interrupt`, `syscall.SIGTERM`) to cleanly close server listeners and database connections using `server.Shutdown(ctx)`.
-6. **Dockerizing the Application**:
+5. **Dockerizing the Application**:
    - Writing a multi-stage `Dockerfile` to create a tiny, production-ready Go binary container.
 
 ---
@@ -301,3 +324,14 @@ When you're ready to proceed in your video tutorial or with any AI assistant, re
   - Defined `RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager)` accepting both router and middleware manager as input.
   - Refactored `cmd/serve.go` to instantiate `mux` and `manager`, configure global middlewares, and pass them to `RegisterRoutes(mux, manager)`.
   - Refactored `main_test.go` to use `cmd.RegisterRoutes(mux, manager)`, keeping routes and tests DRY (Don't Repeat Yourself).
+- **Session 12**:
+  - Implemented pure Go `.env` file parsing and environment management in a new `config/` package without any 3rd-party dependencies.
+  - Defined `Config` struct (`Version`, `ServiceName`, `Port`) with fallback defaults via `config.Load()`.
+  - Added startup configuration banner in `cmd/serve.go` printing service name, version, and dynamically binding server to configured `PORT`.
+  - Added automated test suite in `config/config_test.go` covering `.env` loading, comment handling, quote stripping, and fallback defaults (total 12 unit tests passing).
+- **Session 13**:
+  - Re-architected project under REST domain philosophy: created dedicated `rest/` directory.
+  - Moved `handlers/` and `middleware/` into `rest/handlers/` and `rest/middleware/`.
+  - Created `rest/routes.go` and `rest/server.go` with `rest.Start(cfg *config.Config)`.
+  - Updated `cmd/serve.go` to import `rest` and call `rest.Start(cfg)`.
+  - Updated `main_test.go` imports and verified all 12 tests continue to pass with 100% success.

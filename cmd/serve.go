@@ -2,33 +2,24 @@ package cmd
 
 import (
 	"fmt"
-	"net/http"
 
-	"go-first-project/middleware"
+	"go-first-project/config"
+	"go-first-project/rest"
 )
 
-// Serve configures the router, attaches middleware, and starts the HTTP server.
+// Serve loads configuration and starts the REST server.
 // Exported (Capital 'S') so it can be called from main.go.
 func Serve() {
-	mux := http.NewServeMux()
-	manager := middleware.NewManager()
+	// 1. Load configuration from .env file / environment variables
+	cfg := config.Load()
 
-	// 1. Configure global middlewares
-	// Execution flow: Incoming Request -> LoggerMiddleware -> CorsMiddleware -> Mux -> Handlers
-	manager.Use(
-		middleware.LoggerMiddleware,
-		middleware.CorsMiddleware,
-	)
+	// 2. Print configuration details loaded from .env
+	fmt.Println("===========================================")
+	fmt.Printf("Service: %s\n", cfg.ServiceName)
+	fmt.Printf("Version: %s\n", cfg.Version)
+	fmt.Printf("Port:    %s\n", cfg.Port)
+	fmt.Println("===========================================")
 
-	// 2. Register all application routes, passing both mux and manager as input
-	RegisterRoutes(mux, manager)
-
-	// 3. Wrap the router with all registered middlewares
-	rootHandler := manager.Wrap(mux)
-
-	// 4. Start the HTTP server
-	fmt.Println("Server is running on http://localhost:8080")
-	if err := http.ListenAndServe(":8080", rootHandler); err != nil {
-		fmt.Println("Error starting server:", err)
-	}
+	// 3. Start the REST server with the loaded configuration
+	rest.Start(cfg)
 }

@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"go-first-project/cmd"
-	"go-first-project/middleware"
 	"go-first-project/models"
+	"go-first-project/rest"
+	"go-first-project/rest/middleware"
 )
 
 func setupTestServer() http.Handler {
@@ -20,7 +20,7 @@ func setupTestServer() http.Handler {
 		middleware.CorsMiddleware,
 	)
 
-	cmd.RegisterRoutes(mux, manager)
+	rest.RegisterRoutes(mux, manager)
 
 	return manager.Wrap(mux)
 }

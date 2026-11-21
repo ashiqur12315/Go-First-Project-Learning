@@ -1,16 +1,15 @@
-package cmd
+package rest
 
 import (
 	"fmt"
 	"net/http"
 
-	"go-first-project/handlers"
-	"go-first-project/middleware"
+	"go-first-project/rest/handlers"
+	"go-first-project/rest/middleware"
 )
 
 // RegisterRoutes registers all endpoints onto the provided ServeMux.
-// It accepts both mux and manager as input parameters so routes can be registered
-// and route-specific middleware can be applied where needed.
+// It accepts both mux and manager so route-specific middlewares can be attached when needed.
 func RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager) {
 	// Hello test endpoint
 	mux.Handle("GET /hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
