@@ -4,33 +4,29 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"go-first-project/database"
 	"go-first-project/models"
+	"go-first-project/utils"
 )
 
-// CreateProduct is exported (Capital 'C') so main.go can register it
+// CreateProduct decodes the JSON payload, validates it, and inserts it into the database.
 func CreateProduct(w http.ResponseWriter, r *http.Request) {
 	var input models.Product
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		sendData(w, http.StatusBadRequest, map[string]string{"error": "Invalid JSON payload"})
+		utils.SendData(w, http.StatusBadRequest, map[string]string{"error": "Invalid JSON payload"})
 		return
 	}
 
 	// Basic validation
 	if input.Name == "" {
-		sendData(w, http.StatusBadRequest, map[string]string{"error": "Product name is required"})
+		utils.SendData(w, http.StatusBadRequest, map[string]string{"error": "Product name is required"})
 		return
 	}
 	if input.Price <= 0 {
-		sendData(w, http.StatusBadRequest, map[string]string{"error": "Product price must be greater than 0"})
+		utils.SendData(w, http.StatusBadRequest, map[string]string{"error": "Product price must be greater than 0"})
 		return
 	}
 
-	models.Mu.Lock()
-	defer models.Mu.Unlock()
-
-	input.ID = models.NextID
-	models.NextID++
-	models.Products = append(models.Products, input)
-
-	sendData(w, http.StatusCreated, input)
+	created := database.CreateProduct(input)
+	utils.SendData(w, http.StatusCreated, created)
 }

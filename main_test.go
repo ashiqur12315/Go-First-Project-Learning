@@ -7,12 +7,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"go-first-project/database"
 	"go-first-project/models"
 	"go-first-project/rest"
 	"go-first-project/rest/middleware"
 )
 
 func setupTestServer() http.Handler {
+	database.Reset()
 	mux := http.NewServeMux()
 	manager := middleware.NewManager()
 	manager.Use(
@@ -132,7 +134,7 @@ func TestPatchProduct(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if prod.Price != 109.99 || prod.Name != "Updated Keyboard" {
+	if prod.Price != 109.99 || prod.Name != "Mechanical Keyboard" {
 		t.Fatalf("unexpected patched product: %+v", prod)
 	}
 }

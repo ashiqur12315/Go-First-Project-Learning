@@ -24,16 +24,17 @@
 | `config/config.go` | `package config`: Pure standard-library configuration manager — reads `.env` via `bufio.Scanner`, sets `os.Setenv`, and populates `Config` struct (`Version`, `ServiceName`, `Port`) with fallback defaults. |
 | `config/config_test.go` | `package config`: Unit test suite verifying `.env` parsing, comments, quotes, and fallback defaults. |
 | `.env` | Environment configuration file containing `VERSION`, `SERVICE_NAME`, and `PORT`. |
-| `models/product.go` | `package models`: Exported data models (`Product`, `UpdateProductInput`) and thread-safe in-memory store (`Products`, `Mu`, `NextID`). |
+| `models/product.go` | `package models`: Pure domain entities and schema definitions (`Product`, `UpdateProductInput`), strictly decoupled from storage logic. |
+| `database/database.go` | `package database`: Dedicated data layer with in-memory thread-safe repository CRUD functions (`GetAllProducts`, `GetProductByID`, `CreateProduct`, `UpdateProduct`, `PatchProduct`, `DeleteProduct`, and `Reset`). |
+| `database/database_test.go` | `package database`: Complete unit test suite verifying CRUD operations, sentinel errors, and test isolation. |
 | `utils/response.go` | `package utils`: Reusable cross-package utility functions including `SendData(w, status, data)` for standardized JSON responses. |
 | `utils/response_test.go` | `package utils`: Unit test suite verifying `SendData` headers, status code, and JSON payload encoding. |
 | `rest/server.go` | `package rest`: Encapsulates REST server setup — accepts `cfg *config.Config`, initializes `mux` and `manager`, calls `RegisterRoutes(mux, manager)`, wraps with `manager.Wrap(mux)`, and starts `http.ListenAndServe`. |
 | `rest/routes.go` | `package rest`: Single source of truth for routing — defines `RegisterRoutes(mux, manager)` and maps URL paths/methods to handler functions. |
-| `rest/handlers/helpers.go` | `package handlers`: Handler-level utility bridge defining `sendData` which reuses `utils.SendData`. |
-| `rest/handlers/get_product.go` | `package handlers`: Exported query handlers `GetAllProducts` and `GetProductByID`. |
-| `rest/handlers/create_product.go` | `package handlers`: Exported handler `CreateProduct`. |
-| `rest/handlers/update_product.go` | `package handlers`: Exported handlers `UpdateProduct` and `PatchProduct`. |
-| `rest/handlers/delete_product.go` | `package handlers`: Exported handler `DeleteProduct`. |
+| `rest/handlers/get_product.go` | `package handlers`: Exported query handlers `GetAllProducts` and `GetProductByID` using `database.*` and `utils.SendData`. |
+| `rest/handlers/create_product.go` | `package handlers`: Exported handler `CreateProduct` with validation, database insertion, and `utils.SendData`. |
+| `rest/handlers/update_product.go` | `package handlers`: Exported handlers `UpdateProduct` and `PatchProduct` using `database.*` and `utils.SendData`. |
+| `rest/handlers/delete_product.go` | `package handlers`: Exported handler `DeleteProduct` using `database.*` and `utils.SendData`. |
 | `rest/middleware/cors.go` | `package middleware`: Exported `CorsMiddleware` with preflight `OPTIONS` and caching. |
 | `rest/middleware/logger.go` | `package middleware`: Exported `LoggerMiddleware` with `responseRecorder` capturing method, path, status, and latency. |
 | `rest/middleware/manager.go` | `package middleware`: Exported `Manager` and `Middleware` type to chain middlewares cleanly without nesting. |
@@ -210,7 +211,28 @@
   func SendData(w http.ResponseWriter, status int, data any)
   ```
   Sets `Content-Type: application/json`, writes status code, and encodes JSON payload cleanly.
-- **Handler Integration**: Handlers call `sendData(w, status, data)`, delegating to `utils.SendData` and keeping handler files DRY.
+- **Handler Integration**: Handlers import `"go-first-project/utils"` and call `utils.SendData(w, status, data)` directly, eliminating unnecessary wrapper functions.
+
+### 14. Data Layer Abstraction & In-Memory Repository Pattern (`database/` package)
+- **Separation of Concerns (SoC)**:
+  - `models/`: Strictly defines schema entities (`Product`, `UpdateProductInput`). No storage variables, no mutexes, no database imports.
+  - `database/`: Manages storage state, concurrency synchronization (`sync.RWMutex`), query filtering, and data mutations.
+  - `handlers/`: Handles HTTP request decoding, validation, delegating to `database.*`, and returning JSON responses via `sendData`.
+- **Clean CRUD Operations**:
+  ```go
+  GetAllProducts() []models.Product
+  GetProductByID(id int) (*models.Product, error)
+  CreateProduct(p models.Product) models.Product
+  UpdateProduct(id int, p models.Product) (*models.Product, error)
+  PatchProduct(id int, input models.UpdateProductInput) (*models.Product, error)
+  DeleteProduct(id int) error
+  ```
+- **Sentinel Errors**:
+  - `var ErrNotFound = errors.New("product not found")` exported by `database`.
+  - Handlers use `errors.Is(err, database.ErrNotFound)` to cleanly distinguish 404 Not Found from 500 Internal Server Error.
+- **Automated Test Isolation**:
+  - `database.Reset()` restores the initial seed data.
+  - Calling `database.Reset()` in test setup functions prevents cross-test state leakage.
 
 ---
 
@@ -352,3 +374,15 @@ When you're ready to proceed in your video tutorial or with any AI assistant, re
   - Refactored `rest/handlers/helpers.go` to bridge `sendData` to `utils.SendData`.
   - Refactored all handlers (`get_product`, `create_product`, `update_product`, `delete_product`) to use `sendData`.
   - Verified all 13 automated tests across `main`, `config`, and `utils` pass with 100% success.
+- **Session 15**:
+  - Decoupled storage from domain models by creating a dedicated `database/` package implementing Approach 2 (Repository CRUD functions).
+  - Cleaned `models/product.go` to strictly hold domain entity definitions (`Product`, `UpdateProductInput`), eliminating global storage variables and mutexes.
+  - Implemented thread-safe CRUD operations in `database/database.go` (`GetAllProducts`, `GetProductByID`, `CreateProduct`, `UpdateProduct`, `PatchProduct`, `DeleteProduct`, and `Reset`).
+  - Defined sentinel error `database.ErrNotFound` and refactored handlers (`rest/handlers/`) to use `errors.Is(err, database.ErrNotFound)` for clean 404 responses.
+  - Added comprehensive test suite in `database/database_test.go` covering full CRUD lifecycle, not-found errors, and test state reset.
+  - Integrated `database.Reset()` into `main_test.go` test setup for complete test isolation.
+  - Verified all 19 automated tests across `main`, `config`, `database`, and `utils` pass with 100% success.
+- **Session 16**:
+  - Removed redundant `rest/handlers/helpers.go` file.
+  - Refactored all handlers (`get_product.go`, `create_product.go`, `update_product.go`, `delete_product.go`) to import and directly call `utils.SendData(w, status, data)`.
+  - Re-ran complete test suite; all 19 tests continue passing with 100% success.
