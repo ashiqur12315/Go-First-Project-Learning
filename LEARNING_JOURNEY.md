@@ -25,9 +25,11 @@
 | `config/config_test.go` | `package config`: Unit test suite verifying `.env` parsing, comments, quotes, and fallback defaults. |
 | `.env` | Environment configuration file containing `VERSION`, `SERVICE_NAME`, and `PORT`. |
 | `models/product.go` | `package models`: Exported data models (`Product`, `UpdateProductInput`) and thread-safe in-memory store (`Products`, `Mu`, `NextID`). |
+| `utils/response.go` | `package utils`: Reusable cross-package utility functions including `SendData(w, status, data)` for standardized JSON responses. |
+| `utils/response_test.go` | `package utils`: Unit test suite verifying `SendData` headers, status code, and JSON payload encoding. |
 | `rest/server.go` | `package rest`: Encapsulates REST server setup — accepts `cfg *config.Config`, initializes `mux` and `manager`, calls `RegisterRoutes(mux, manager)`, wraps with `manager.Wrap(mux)`, and starts `http.ListenAndServe`. |
 | `rest/routes.go` | `package rest`: Single source of truth for routing — defines `RegisterRoutes(mux, manager)` and maps URL paths/methods to handler functions. |
-| `rest/handlers/helpers.go` | `package handlers`: Package-private helper `writeJSON` (lowercase 'w') used by handlers. |
+| `rest/handlers/helpers.go` | `package handlers`: Handler-level utility bridge defining `sendData` which reuses `utils.SendData`. |
 | `rest/handlers/get_product.go` | `package handlers`: Exported query handlers `GetAllProducts` and `GetProductByID`. |
 | `rest/handlers/create_product.go` | `package handlers`: Exported handler `CreateProduct`. |
 | `rest/handlers/update_product.go` | `package handlers`: Exported handlers `UpdateProduct` and `PatchProduct`. |
@@ -115,7 +117,7 @@
 - **Directory = Package**: In Go, each directory represents a package (e.g., `models/` is `package models`, `handlers/` is `package handlers`).
 - **Capitalization Rule**:
   - **Uppercase (PascalCase)**: **Exported** (public, accessible by other packages). E.g., `handlers.GetAllProducts`, `models.Product`, `middleware.CorsMiddleware`.
-  - **Lowercase (camelCase)**: **Unexported** (package-private). E.g., `handlers.writeJSON` is only usable by files inside the `handlers` folder.
+  - **Lowercase (camelCase)**: **Unexported** (package-private). E.g., `handlers.sendData` is only usable by files inside the `handlers` folder.
 - **Importing Local Packages**:
   - Imported using module name prefix from `go.mod`:
     ```go
@@ -200,6 +202,15 @@
   Encapsulates mux creation, middleware configuration, route binding, and HTTP listener binding.
 - **Passing Configuration Down**:
   `cmd/serve.go` simply calls `rest.Start(cfg)`, keeping CLI/cmd code decoupled from HTTP server implementation details.
+
+### 13. Reusable Utility Functions (`utils/` package & `SendData`)
+- **Centralizing Cross-Cutting Helpers**: Utility functions like sending JSON responses (`utils.SendData`) are separated into a dedicated `utils/` package.
+- **Exported `utils.SendData`**:
+  ```go
+  func SendData(w http.ResponseWriter, status int, data any)
+  ```
+  Sets `Content-Type: application/json`, writes status code, and encodes JSON payload cleanly.
+- **Handler Integration**: Handlers call `sendData(w, status, data)`, delegating to `utils.SendData` and keeping handler files DRY.
 
 ---
 
@@ -335,3 +346,9 @@ When you're ready to proceed in your video tutorial or with any AI assistant, re
   - Created `rest/routes.go` and `rest/server.go` with `rest.Start(cfg *config.Config)`.
   - Updated `cmd/serve.go` to import `rest` and call `rest.Start(cfg)`.
   - Updated `main_test.go` imports and verified all 12 tests continue to pass with 100% success.
+- **Session 14**:
+  - Created dedicated `utils/` package with `utils.SendData(w, status, data)` for standardized JSON response generation across all layers.
+  - Added unit test suite `utils/response_test.go` verifying Content-Type header, status code, and JSON encoding.
+  - Refactored `rest/handlers/helpers.go` to bridge `sendData` to `utils.SendData`.
+  - Refactored all handlers (`get_product`, `create_product`, `update_product`, `delete_product`) to use `sendData`.
+  - Verified all 13 automated tests across `main`, `config`, and `utils` pass with 100% success.

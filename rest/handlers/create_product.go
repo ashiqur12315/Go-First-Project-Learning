@@ -11,17 +11,17 @@ import (
 func CreateProduct(w http.ResponseWriter, r *http.Request) {
 	var input models.Product
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid JSON payload"})
+		sendData(w, http.StatusBadRequest, map[string]string{"error": "Invalid JSON payload"})
 		return
 	}
 
 	// Basic validation
 	if input.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Product name is required"})
+		sendData(w, http.StatusBadRequest, map[string]string{"error": "Product name is required"})
 		return
 	}
 	if input.Price <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Product price must be greater than 0"})
+		sendData(w, http.StatusBadRequest, map[string]string{"error": "Product price must be greater than 0"})
 		return
 	}
 
@@ -32,5 +32,5 @@ func CreateProduct(w http.ResponseWriter, r *http.Request) {
 	models.NextID++
 	models.Products = append(models.Products, input)
 
-	writeJSON(w, http.StatusCreated, input)
+	sendData(w, http.StatusCreated, input)
 }
